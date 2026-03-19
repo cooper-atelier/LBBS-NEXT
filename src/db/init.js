@@ -24,6 +24,18 @@ export function initializeDatabase() {
   const database = getDb()
   const sql = readFileSync(join(__dirname, 'migrations', '001_init.sql'), 'utf8')
   database.exec(sql)
+
+  // Run incremental migrations for existing databases
+  const migrations = ['002_agents_updated_at.sql']
+  for (const file of migrations) {
+    try {
+      const migrationSql = readFileSync(join(__dirname, 'migrations', file), 'utf8')
+      database.exec(migrationSql)
+    } catch {
+      // Column already exists — safe to ignore
+    }
+  }
+
   return database
 }
 

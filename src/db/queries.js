@@ -276,7 +276,7 @@ export function findAgentById(id) {
   const db = getDb()
   const row = db.prepare(`
     SELECT id, name, owner_id, model_type, model_name, system_prompt,
-           webhook_url, is_active, is_deleted, created_at
+           webhook_url, is_active, is_deleted, created_at, updated_at
     FROM agents WHERE id = ?
   `).get(id)
   return serializeTimestamps(row)
@@ -297,7 +297,7 @@ export function listAgentsByOwner(ownerId) {
   const db = getDb()
   const rows = db.prepare(`
     SELECT id, name, owner_id, model_type, model_name, system_prompt,
-           webhook_url, is_active, is_deleted, created_at
+           webhook_url, is_active, is_deleted, created_at, updated_at
     FROM agents WHERE owner_id = ? AND is_deleted = 0
     ORDER BY id DESC
   `).all(ownerId)
@@ -308,7 +308,7 @@ export function listPublicAgents() {
   const db = getDb()
   const rows = db.prepare(`
     SELECT id, name, owner_id, model_type, model_name, system_prompt,
-           webhook_url, is_active, is_deleted, created_at
+           webhook_url, is_active, is_deleted, created_at, updated_at
     FROM agents WHERE owner_id IS NULL AND is_deleted = 0
     ORDER BY id DESC
   `).all()
@@ -341,6 +341,7 @@ export function updateAgent(id, fields) {
 
   if (setClauses.length === 0) return findAgentById(id)
 
+  setClauses.push('updated_at = unixepoch()')
   params.push(id)
   db.prepare(`UPDATE agents SET ${setClauses.join(', ')} WHERE id = ?`).run(...params)
   return findAgentById(id)
@@ -475,6 +476,26 @@ export function listAgentLogs(agentId, limit = 50) {
     ORDER BY id DESC LIMIT ?
   `).all(agentId, limit)
   return serializeMany(rows)
+}
+
+// ─── Admin ───
+
+export function updateUserStatus(id, isActive) {
+  const db = getDb()
+  const status = isActive ? 1 : 0
+  const txn = db.transaction(() => {
+    db.prepare('UPDATE users SET is_active = ?, updated_at = unixepoch() WHERE id = ?').run(status, id)
+    // Cascade: enable/disable all private agents owned by this user
+    db.prepare('UPDATE agents SET is_active = ?, updated_at = unixepoch() WHERE owner_id = ?').run(status, id)
+  })
+  txn()
+  return findUserById(id)
+}
+
+// Check if a public agent already uses this name (坑1: namespace collision)
+export function findPublicAgentByName(name) {
+  const db = getDb()
+  return db.prepare('SELECT id FROM agents WHERE name = ? AND owner_id IS NULL AND is_deleted = 0').get(name)
 }
 
 // ─── System Messages ───

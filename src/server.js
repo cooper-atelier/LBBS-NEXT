@@ -7,6 +7,8 @@ import authRoutes from './api/auth.js'
 import userRoutes from './api/users.js'
 import boardRoutes from './api/board.js'
 import agentApiRoutes from './ai/agent_api.js'
+import agentRoutes from './api/agents.js'
+import adminRoutes from './api/admin.js'
 import { startWorker, stopWorker } from './ai/queue.js'
 
 export async function buildApp(opts = {}) {
@@ -24,6 +26,8 @@ export async function buildApp(opts = {}) {
   await app.register(userRoutes)
   await app.register(boardRoutes)
   await app.register(agentApiRoutes)
+  await app.register(agentRoutes)
+  await app.register(adminRoutes)
 
   // ─── Global error handler ───
   app.setErrorHandler((error, request, reply) => {

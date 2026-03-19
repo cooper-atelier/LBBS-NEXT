@@ -109,3 +109,50 @@ src/server.js          — Registered agentApiRoutes, start/stop worker in lifec
 - Web frontend (htmx + PicoCSS)
 - Docker / npm packaging
 - Vitest test suite
+
+---
+
+## M3: 私有 AI（用户绑定 + 权限校验）✅
+
+Completed: 2026-03-19
+
+### Files created (3)
+
+```
+src/api/agents.js
+src/api/admin.js
+src/db/migrations/002_agents_updated_at.sql
+```
+
+### Files modified (3)
+
+```
+src/db/queries.js  — Added updateUserStatus (cascade ban), findPublicAgentByName; added updated_at to agent SELECT/UPDATE queries
+src/db/init.js     — Runs incremental migrations (002+); agents table now has updated_at column
+src/server.js      — Registered agentRoutes and adminRoutes
+src/db/migrations/001_init.sql — Added updated_at column to agents table definition
+```
+
+### What works
+
+- User agent management: GET /api/agents/mine, POST /api/agents, PATCH /api/agents/:id, DELETE /api/agents/:id, POST /api/agents/:id/rotate-token
+- Admin routes: GET/POST/PATCH /api/admin/agents (public agent CRUD), PATCH /api/admin/agents/:id/toggle, PATCH /api/admin/users/:id (ban/unban)
+- All routes have Fastify JSON Schema validation with additionalProperties: false
+- Agent name validated against AGENT_NAME_PATTERN_JS (consistent with detector.js)
+- rawToken + webhookSecret returned only on create and rotate-token — never stored in plaintext
+- Ownership checks on all user agent routes; public-only checks on admin agent routes
+- Soft delete only (architecture decision #8)
+
+### Pitfalls addressed
+
+1. **坑1 (Namespace Collision)**: POST /api/agents and PATCH /api/agents/:id check `findPublicAgentByName()` — rejects 409 if name collides with a public agent
+2. **坑2 (Zombie Logs Route)**: GET /api/agents/:id/logs omitted — agent_logs table has no writers (YAGNI)
+3. **坑3 (Ban Bypass)**: `updateUserStatus` uses a transaction to cascade ban/unban to all private agents owned by the user; system user (id=1) protected from banning
+4. **坑4 (Config Residue)**: Switching model_type away from custom_webhook auto-clears webhook_url/webhook_secret; clearing webhook_url also clears webhook_secret
+
+### Not yet implemented (M4+)
+
+- WebSocket (socket.io) real-time broadcast
+- Web frontend (htmx + PicoCSS)
+- Docker / npm packaging
+- Vitest test suite
