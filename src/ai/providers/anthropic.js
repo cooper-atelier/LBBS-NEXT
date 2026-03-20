@@ -1,12 +1,18 @@
 import { decrypt } from '../../utils/crypto.js'
 import { createComment, updateJobStatus, createAgentLog } from '../../db/queries.js'
 import config from '../../config.js'
+import { getIo } from '../../ws/socket.js'
+import { buildContextPrompt, buildSystemMessage } from '../context.js'
 
 export async function callAnthropic(job) {
   const startTime = Date.now()
   const apiKey = decrypt(job.api_key_enc)
+  const baseUrl = (job.base_url || 'https://api.anthropic.com/v1').replace(/\/+$/, '')
 
-  const response = await fetch('https://api.anthropic.com/v1/messages', {
+  const systemMsg = buildSystemMessage(job)
+  const contextPrompt = buildContextPrompt(job)
+
+  const response = await fetch(`${baseUrl}/messages`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -16,8 +22,8 @@ export async function callAnthropic(job) {
     body: JSON.stringify({
       model: job.model_name || 'claude-sonnet-4-20250514',
       max_tokens: 2000,
-      ...(job.system_prompt ? { system: job.system_prompt } : {}),
-      messages: [{ role: 'user', content: job.trigger_text }],
+      system: systemMsg,
+      messages: [{ role: 'user', content: contextPrompt }],
     }),
     signal: AbortSignal.timeout(config.LLM_TIMEOUT_MS),
   })
@@ -34,8 +40,17 @@ export async function callAnthropic(job) {
   const latencyMs = Date.now() - startTime
   const authorId = job.agent_owner_id ?? config.SYSTEM_USER_ID
   const parentId = job.comment_id ?? null
-  createComment(job.post_id, authorId, content, parentId, job.agent_id)
+  const comment = createComment(job.post_id, authorId, content, parentId, job.agent_id)
 
   updateJobStatus(job.id, 'done')
   createAgentLog(job.agent_id, job.id, 'done', latencyMs)
+
+  const io = getIo()
+  if (io) {
+    io.to(`board:${job.board_id}`).emit('ai_reply', {
+      post_id: job.post_id,
+      agent_name: job.agent_name,
+      comment,
+    })
+  }
 }

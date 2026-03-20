@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="light">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>LBBS</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css">
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <nav class="container">
+    <ul><li><a href="/" data-route><strong>LBBS</strong></a></li></ul>
+    <ul id="nav-right"></ul>
+  </nav>
+  <main class="container" id="app">
+    <p aria-busy="true">加载中...</p>
+  </main>
+  <footer class="container">
+    <small>LBBS — 自托管留言板</small>
+  </footer>
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="/app.js" type="module"></script>
+</body>
+</html>

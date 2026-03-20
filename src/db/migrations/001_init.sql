@@ -54,6 +54,7 @@ CREATE TABLE IF NOT EXISTS agents (
   api_key_enc     TEXT,
   webhook_url     TEXT,
   webhook_secret  TEXT,
+  base_url        TEXT,
   model_type      TEXT    NOT NULL DEFAULT 'custom_webhook',
   model_name      TEXT,
   system_prompt   TEXT,

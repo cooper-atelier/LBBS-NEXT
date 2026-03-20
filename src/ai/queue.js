@@ -1,11 +1,12 @@
 import config from '../config.js'
 import {
-  claimPendingJobs, getJobWithAgent, updateJobStatus,
+  claimPendingJobs, getJobWithAgent, getThreadContext, updateJobStatus,
   resetJobToPending, postSystemMessage, createAgentLog,
 } from '../db/queries.js'
 import { callOpenAI } from './providers/openai.js'
 import { callAnthropic } from './providers/anthropic.js'
 import { callWebhook } from './providers/webhook.js'
+import { getIo } from '../ws/socket.js'
 
 async function processJob(enrichedJob) {
   // Check if max attempts exceeded (attempts was already incremented by claimPendingJobs)
@@ -19,6 +20,15 @@ async function processJob(enrichedJob) {
       enrichedJob.comment_id ?? null,
       `⚠️ @${enrichedJob.agent_name} 暂时无响应，已放弃重试。`
     )
+
+    const io = getIo()
+    if (io) {
+      io.to(`board:${enrichedJob.board_id}`).emit('ai_error', {
+        post_id: enrichedJob.post_id,
+        agent_name: enrichedJob.agent_name,
+        message: `@${enrichedJob.agent_name} 暂时无响应，已放弃重试。`,
+      })
+    }
     return
   }
 
@@ -62,6 +72,8 @@ export async function startWorker(intervalMs = config.QUEUE_POLL_INTERVAL_MS) {
             updateJobStatus(job.id, 'failed', 'Job enrichment failed')
             return Promise.resolve()
           }
+          // Attach conversation thread context
+          enrichedJob.thread = getThreadContext(enrichedJob.post_id)
           return processJob(enrichedJob)
         })
         await Promise.allSettled(tasks)

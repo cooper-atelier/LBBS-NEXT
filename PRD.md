@@ -53,7 +53,7 @@ lbbs-next 是一个**可自托管的轻量级社区留言板**，内置多用户
   US-10   选择接入方式：直连 OpenAI/Anthropic API 或自定义 Webhook URL
   US-11   重新生成 Agent 的回写 Token（用于外部服务回调）
   US-12   启用 / 停用我的 Agent
-  US-13   查看 Agent 的调用日志（最近 N 条）
+  US-13   查看 Agent 的调用日志（最近 N 条）— 延迟至 M6，v0.1 前端不实现
 ```
 
 ### 2.3 管理员
@@ -434,6 +434,6 @@ npx lbbs-next backup --output ./backup.db   # 备份数据库
 | M1 | DB Schema + Auth + 基础 CRUD → 多用户登录发帖跑通 |
 | M2 | AI 系统（公共 AI + 队列 + 回写）→ @mention 触发 AI 跑通 |
 | M3 | 私有 AI（用户绑定 + 权限校验）→ 私有 AI 功能完整 |
-| M4 | Web 前端（htmx + PicoCSS）→ 完整浏览器界面 |
+| M4 | Web 前端（Vanilla SPA + PicoCSS）→ 完整浏览器界面 |
 | M5 | Docker + npm 打包 + CLI → `npx lbbs-next start` 一行跑通 |
 | M6 | 安全加固 + 日志 + 测试覆盖 → 可交付给他人使用 |

@@ -134,9 +134,11 @@ export function listPostsByBoard(boardId, { cursor = null, limit = 20 } = {}) {
   const rows = db.prepare(`
     SELECT p.id, p.board_id, p.author_id, p.agent_id, p.title, p.content,
            p.created_at, p.updated_at,
-           u.username AS author_username, u.avatar_url AS author_avatar
+           u.username AS author_username, u.avatar_url AS author_avatar,
+           a.name AS agent_name
     FROM posts p
     JOIN users u ON u.id = p.author_id
+    LEFT JOIN agents a ON a.id = p.agent_id
     WHERE p.board_id = ? AND p.is_deleted = 0
       AND (? IS NULL OR p.id < ?)
     ORDER BY p.id DESC
@@ -155,9 +157,11 @@ export function findPostById(id) {
   const row = db.prepare(`
     SELECT p.id, p.board_id, p.author_id, p.agent_id, p.title, p.content,
            p.is_deleted, p.created_at, p.updated_at,
-           u.username AS author_username, u.avatar_url AS author_avatar
+           u.username AS author_username, u.avatar_url AS author_avatar,
+           a.name AS agent_name
     FROM posts p
     JOIN users u ON u.id = p.author_id
+    LEFT JOIN agents a ON a.id = p.agent_id
     WHERE p.id = ?
   `).get(id)
   return serializeTimestamps(row)
@@ -216,9 +220,11 @@ export function listCommentsByPost(postId) {
   const rows = db.prepare(`
     SELECT c.id, c.post_id, c.author_id, c.agent_id, c.parent_id,
            c.content, c.is_deleted, c.created_at,
-           u.username AS author_username, u.avatar_url AS author_avatar
+           u.username AS author_username, u.avatar_url AS author_avatar,
+           a.name AS agent_name
     FROM comments c
     JOIN users u ON u.id = c.author_id
+    LEFT JOIN agents a ON a.id = c.agent_id
     WHERE c.post_id = ?
     ORDER BY c.id ASC
   `).all(postId)
@@ -230,9 +236,11 @@ export function findCommentById(id) {
   const row = db.prepare(`
     SELECT c.id, c.post_id, c.author_id, c.agent_id, c.parent_id,
            c.content, c.is_deleted, c.created_at,
-           u.username AS author_username, u.avatar_url AS author_avatar
+           u.username AS author_username, u.avatar_url AS author_avatar,
+           a.name AS agent_name
     FROM comments c
     JOIN users u ON u.id = c.author_id
+    LEFT JOIN agents a ON a.id = c.agent_id
     WHERE c.id = ?
   `).get(id)
   return serializeTimestamps(row)
@@ -263,12 +271,12 @@ export function findCommentOwner(id) {
 
 // ─── Agents ───
 
-export function createAgent(name, ownerId, tokenHash, { apiKeyEnc, webhookUrl, webhookSecret, modelType, modelName, systemPrompt }) {
+export function createAgent(name, ownerId, tokenHash, { apiKeyEnc, webhookUrl, webhookSecret, modelType, modelName, systemPrompt, baseUrl }) {
   const db = getDb()
   const result = db.prepare(`
-    INSERT INTO agents (name, owner_id, token, api_key_enc, webhook_url, webhook_secret, model_type, model_name, system_prompt)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(name, ownerId, tokenHash, apiKeyEnc || null, webhookUrl || null, webhookSecret || null, modelType, modelName || null, systemPrompt || null)
+    INSERT INTO agents (name, owner_id, token, api_key_enc, webhook_url, webhook_secret, base_url, model_type, model_name, system_prompt)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(name, ownerId, tokenHash, apiKeyEnc || null, webhookUrl || null, webhookSecret || null, baseUrl || null, modelType, modelName || null, systemPrompt || null)
   return findAgentById(result.lastInsertRowid)
 }
 
@@ -276,7 +284,7 @@ export function findAgentById(id) {
   const db = getDb()
   const row = db.prepare(`
     SELECT id, name, owner_id, model_type, model_name, system_prompt,
-           webhook_url, is_active, is_deleted, created_at, updated_at
+           webhook_url, base_url, is_active, is_deleted, created_at, updated_at
     FROM agents WHERE id = ?
   `).get(id)
   return serializeTimestamps(row)
@@ -297,7 +305,7 @@ export function listAgentsByOwner(ownerId) {
   const db = getDb()
   const rows = db.prepare(`
     SELECT id, name, owner_id, model_type, model_name, system_prompt,
-           webhook_url, is_active, is_deleted, created_at, updated_at
+           webhook_url, base_url, is_active, is_deleted, created_at, updated_at
     FROM agents WHERE owner_id = ? AND is_deleted = 0
     ORDER BY id DESC
   `).all(ownerId)
@@ -308,7 +316,7 @@ export function listPublicAgents() {
   const db = getDb()
   const rows = db.prepare(`
     SELECT id, name, owner_id, model_type, model_name, system_prompt,
-           webhook_url, is_active, is_deleted, created_at, updated_at
+           webhook_url, base_url, is_active, is_deleted, created_at, updated_at
     FROM agents WHERE owner_id IS NULL AND is_deleted = 0
     ORDER BY id DESC
   `).all()
@@ -326,6 +334,7 @@ export function updateAgent(id, fields) {
     apiKeyEnc: 'api_key_enc',
     webhookUrl: 'webhook_url',
     webhookSecret: 'webhook_secret',
+    baseUrl: 'base_url',
     modelType: 'model_type',
     modelName: 'model_name',
     systemPrompt: 'system_prompt',
@@ -441,21 +450,42 @@ export function findActiveJob(agentId, postId) {
   `).get(agentId, postId)
 }
 
-// Enrich job with agent details for processing
+// Enrich job with agent details + post/board context for processing
 export function getJobWithAgent(jobId) {
   const db = getDb()
   return db.prepare(`
     SELECT j.*, a.name AS agent_name, a.model_type, a.model_name,
-           a.api_key_enc, a.webhook_url, a.webhook_secret,
+           a.api_key_enc, a.webhook_url, a.webhook_secret, a.base_url,
            a.system_prompt, a.owner_id AS agent_owner_id,
            u.username AS triggered_by_username,
-           p.board_id
+           p.board_id, p.title AS post_title, p.content AS post_content,
+           p.author_id AS post_author_id,
+           pu.username AS post_author_username,
+           b.name AS board_name
     FROM job_queue j
     JOIN agents a ON a.id = j.agent_id
     JOIN users u ON u.id = j.triggered_by
     JOIN posts p ON p.id = j.post_id
+    JOIN users pu ON pu.id = p.author_id
+    JOIN boards b ON b.id = p.board_id
     WHERE j.id = ?
   `).get(jobId)
+}
+
+// Get recent comments for a post as conversation thread context (max 20)
+export function getThreadContext(postId, limit = 20) {
+  const db = getDb()
+  return db.prepare(`
+    SELECT c.id, c.parent_id, c.content, c.author_id, c.agent_id, c.is_deleted,
+           u.username AS author_username,
+           a.name AS agent_name
+    FROM comments c
+    JOIN users u ON u.id = c.author_id
+    LEFT JOIN agents a ON a.id = c.agent_id
+    WHERE c.post_id = ?
+    ORDER BY c.id DESC
+    LIMIT ?
+  `).all(postId, limit).reverse()
 }
 
 // ─── Agent Logs ───

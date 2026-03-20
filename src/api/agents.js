@@ -49,12 +49,13 @@ export default async function agentRoutes(app) {
           model_name: { type: 'string', maxLength: 100 },
           system_prompt: { type: 'string', maxLength: 4000 },
           api_key: { type: 'string', maxLength: 500 },
+          base_url: { type: 'string', format: 'uri', maxLength: 500 },
           webhook_url: { type: 'string', format: 'uri', maxLength: 500 },
         },
       },
     },
   }, async (request, reply) => {
-    const { name, model_type, model_name, system_prompt, api_key, webhook_url } = request.body
+    const { name, model_type, model_name, system_prompt, api_key, base_url, webhook_url } = request.body
 
     // 坑1: Block if name is taken by a public agent
     if (findPublicAgentByName(name)) {
@@ -85,6 +86,7 @@ export default async function agentRoutes(app) {
       modelType: model_type,
       modelName: model_name || null,
       systemPrompt: system_prompt || null,
+      baseUrl: model_type !== 'custom_webhook' ? (base_url || null) : null,
     })
 
     return reply.code(201).send({
@@ -132,7 +134,7 @@ export default async function agentRoutes(app) {
       return reply.code(410).send({ error: 'GONE', message: 'Agent 已被删除' })
     }
 
-    const { name, model_type, model_name, system_prompt, api_key, webhook_url, is_active } = request.body
+    const { name, model_type, model_name, system_prompt, api_key, base_url, webhook_url, is_active } = request.body
 
     // 坑1: If renaming, check public namespace collision
     if (name && findPublicAgentByName(name)) {
@@ -155,10 +157,11 @@ export default async function agentRoutes(app) {
     }
 
     if (effectiveModelType === 'custom_webhook') {
-      // Webhook mode: accept webhook_url updates, clear api_key if switching to webhook
+      // Webhook mode: accept webhook_url updates, clear api_key/base_url if switching to webhook
       if (webhook_url !== undefined) fields.webhookUrl = webhook_url || null
       if (model_type !== undefined && model_type === 'custom_webhook') {
         fields.apiKeyEnc = api_key ? encrypt(api_key) : null
+        fields.baseUrl = null
       }
       // If webhook_url cleared, also clear webhook_secret
       if (webhook_url === null || webhook_url === '') {
@@ -166,7 +169,8 @@ export default async function agentRoutes(app) {
         fields.webhookSecret = null
       }
     } else {
-      // Direct LLM mode: clear webhook fields
+      // Direct LLM mode: clear webhook fields, accept base_url
+      if (base_url !== undefined) fields.baseUrl = base_url || null
       if (model_type !== undefined) {
         fields.webhookUrl = null
         fields.webhookSecret = null

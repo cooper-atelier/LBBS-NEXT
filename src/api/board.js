@@ -7,6 +7,7 @@ import {
 } from '../db/queries.js'
 import { extractMentionsWithContext } from '../ai/detector.js'
 import { dispatchMentions } from '../ai/dispatcher.js'
+import { getIo } from '../ws/socket.js'
 
 export default async function boardRoutes(fastify) {
   // ═══ Boards ═══
@@ -89,6 +90,10 @@ export default async function boardRoutes(fastify) {
     }
     const post = createPost(request.params.id, request.user.id, request.body.title, request.body.content)
     reply.code(201).send(post)
+
+    // Broadcast new post to board room
+    const io = getIo()
+    if (io) io.to(`board:${request.params.id}`).emit('new_post', post)
 
     // Fire-and-forget AI dispatch after response (architecture decision #3)
     try {
@@ -217,6 +222,10 @@ export default async function boardRoutes(fastify) {
       throw err
     }
     reply.code(201).send(comment)
+
+    // Broadcast new comment to board room
+    const io = getIo()
+    if (io) io.to(`board:${post.board_id}`).emit('new_comment', comment)
 
     // Fire-and-forget AI dispatch after response (architecture decision #3)
     try {

@@ -50,12 +50,13 @@ export default async function adminRoutes(app) {
           model_name: { type: 'string', maxLength: 100 },
           system_prompt: { type: 'string', maxLength: 4000 },
           api_key: { type: 'string', maxLength: 500 },
+          base_url: { type: 'string', format: 'uri', maxLength: 500 },
           webhook_url: { type: 'string', format: 'uri', maxLength: 500 },
         },
       },
     },
   }, async (request, reply) => {
-    const { name, model_type, model_name, system_prompt, api_key, webhook_url } = request.body
+    const { name, model_type, model_name, system_prompt, api_key, base_url, webhook_url } = request.body
 
     if (model_type === 'custom_webhook' && !webhook_url) {
       return reply.code(400).send({ error: 'VALIDATION_ERROR', message: 'Webhook 模式必须提供 webhook_url' })
@@ -80,6 +81,7 @@ export default async function adminRoutes(app) {
       modelType: model_type,
       modelName: model_name || null,
       systemPrompt: system_prompt || null,
+      baseUrl: model_type !== 'custom_webhook' ? (base_url || null) : null,
     })
 
     return reply.code(201).send({
@@ -124,7 +126,7 @@ export default async function adminRoutes(app) {
       return reply.code(410).send({ error: 'GONE', message: 'Agent 已被删除' })
     }
 
-    const { name, model_type, model_name, system_prompt, api_key, webhook_url, is_active } = request.body
+    const { name, model_type, model_name, system_prompt, api_key, base_url, webhook_url, is_active } = request.body
     const effectiveModelType = model_type || existing.model_type
 
     const fields = {}
@@ -144,7 +146,11 @@ export default async function adminRoutes(app) {
         fields.webhookUrl = null
         fields.webhookSecret = null
       }
+      if (model_type !== undefined && model_type === 'custom_webhook') {
+        fields.baseUrl = null
+      }
     } else {
+      if (base_url !== undefined) fields.baseUrl = base_url || null
       if (model_type !== undefined) {
         fields.webhookUrl = null
         fields.webhookSecret = null

@@ -1,9 +1,10 @@
 import { sha256 } from '../utils/crypto.js'
 import {
   findAgentByToken, findActiveJob, updateJobStatus,
-  createComment, createAgentLog,
+  createComment, createAgentLog, findPostById,
 } from '../db/queries.js'
 import config from '../config.js'
+import { getIo } from '../ws/socket.js'
 
 export default async function agentApiRoutes(fastify) {
   fastify.post('/api/ai/reply', {
@@ -53,6 +54,17 @@ export default async function agentApiRoutes(fastify) {
     // 4. Mark job done
     updateJobStatus(job.id, 'done')
     createAgentLog(agent.id, job.id, 'done')
+
+    // 5. Broadcast ai_reply
+    const post = findPostById(post_id)
+    const io = getIo()
+    if (io && post) {
+      io.to(`board:${post.board_id}`).emit('ai_reply', {
+        post_id,
+        agent_name: agent.name,
+        comment,
+      })
+    }
 
     return reply.code(201).send({ ok: true, comment_id: comment.id })
   })

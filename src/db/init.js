@@ -26,7 +26,7 @@ export function initializeDatabase() {
   database.exec(sql)
 
   // Run incremental migrations for existing databases
-  const migrations = ['002_agents_updated_at.sql']
+  const migrations = ['002_agents_updated_at.sql', '003_agents_base_url.sql']
   for (const file of migrations) {
     try {
       const migrationSql = readFileSync(join(__dirname, 'migrations', file), 'utf8')

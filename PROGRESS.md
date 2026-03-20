@@ -156,3 +156,68 @@ src/db/migrations/001_init.sql — Added updated_at column to agents table defin
 - Web frontend (htmx + PicoCSS)
 - Docker / npm packaging
 - Vitest test suite
+
+---
+
+## M4: Web 前端（Vanilla SPA + PicoCSS）✅
+
+Completed: 2026-03-19
+
+### Architecture decision: 抛弃 htmx，纯 Vanilla SPA
+
+M4 计划评估后决定不使用 htmx。后端是纯 JSON API，htmx 的核心价值（服务端返回 HTML 片段 → hx-swap）无法发挥。强行引入只会成为死依赖。最终采用 pushState 路由 + fetch JSON + 模板字符串渲染的纯 Vanilla SPA 方案，零前端构建依赖。
+
+### Files created (4)
+
+```
+public/index.html       — SPA 外壳：PicoCSS CDN + socket.io + app.js
+public/app.js           — 全部前端逻辑（~1460 行）：路由、认证、API 客户端、页面渲染、WebSocket
+public/style.css        — PicoCSS 之上的最小覆盖样式（AI 徽章、评论嵌套、动画、移动端适配）
+src/ws/socket.js        — Socket.io 服务端：JWT 握手验证、房间隔离
+```
+
+### Files modified (7)
+
+```
+package.json            — Added @fastify/static, socket.io
+src/server.js           — Registered @fastify/static, socket.io init, SPA fallback handler
+src/db/queries.js       — LEFT JOIN agents on listCommentsByPost, findPostById, listPostsByBoard (agent_name 展示)
+src/api/board.js        — POST create post/comment 后 emit new_post / new_comment
+src/ai/agent_api.js     — AI 回写后 emit ai_reply
+src/ai/providers/openai.js    — 直连完成后 emit ai_reply
+src/ai/providers/anthropic.js — 直连完成后 emit ai_reply
+src/ai/queue.js         — System Bot 错误消息后 emit ai_error
+```
+
+### What works
+
+- Auth flow: 注册、登录、JWT 自动刷新、登出、过期 token 自动清理
+- Board/post 浏览：板块列表、帖子列表（cursor 分页）、帖子详情 + 评论树（2 层嵌套）
+- AI 徽章：agent_id 非空时显示 AI 名称标签
+- 内容管理：编辑/删除自己的帖子和评论，admin 可删除任意内容
+- 实时 WebSocket：new_post、new_comment、ai_reply、ai_error 事件广播与前端渲染
+- AI 思考指示器：发送含 @mention 的内容后显示「正在思考中...」直到 ai_reply/ai_error
+- 用户资料：查看/编辑头像 URL、简介
+- Agent 管理：创建、编辑、启停、轮换 token、软删除；按 model_type 动态显示/隐藏字段
+- Admin 面板：公共 AI 管理（CRUD + 启停）、用户管理（封禁/解封）
+- CSS 动画：ws-new fade-in、post-content 空白保留、移动端断点适配
+
+### M4 五大坑处理结果
+
+1. **坑1 htmx 身份危机** → ✅ 已解决。完全抛弃 htmx，纯 Vanilla SPA + pushState 路由。后端保持纯 JSON API 不变。
+2. **坑2 401 无限死循环** → ✅ 已解决。`api()` 拦截器排除 `path !== '/auth/refresh'`，加 `isRefreshing` 互斥锁防止并发刷新。
+3. **坑3 WebSocket 回音室** → ✅ 已解决。`appendCommentFromSocket()` 先查 `document.querySelector('[data-comment-id="${id}"]')`，已存在则跳过。
+4. **坑4 XSS 模板字符串** → ✅ 已解决。所有用户生成内容统一经过 `escapeHtml()` 处理。v0.1 不渲染 Markdown，无需 DOMPurify；若未来引入 marked.js 必须同时引入 DOMPurify。
+5. **坑5 Agent Logs 诈尸** → ✅ 已解决。前端无「调用日志」Tab，不暴露 `/api/agents/:id/logs` 路由。agent_logs 表保留但无 UI 入口，践行 YAGNI。
+
+### Security hardening
+
+- CSS.escape() 用于 agent name 的 querySelector，防止 CSS 选择器注入
+- Bootstrap 时检测过期 token 并自动清除，避免用户卡在无效登录态
+
+### Not yet implemented (M5+)
+
+- Docker + npm 打包 + CLI (`npx lbbs-next start`)
+- 安全加固 + 日志 + 测试覆盖
+- Markdown 渲染（需同时引入 DOMPurify）
+- Agent 调用日志 UI（后端 query 已就绪，待需求明确后开放）

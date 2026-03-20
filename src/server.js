@@ -1,5 +1,8 @@
+import { fileURLToPath } from 'url'
+import { join, dirname } from 'path'
 import Fastify from 'fastify'
 import cors from '@fastify/cors'
+import fastifyStatic from '@fastify/static'
 import config from './config.js'
 import { registerRateLimit } from './middleware/rateLimit.js'
 import { initializeDatabase, closeDb } from './db/init.js'
@@ -10,6 +13,9 @@ import agentApiRoutes from './ai/agent_api.js'
 import agentRoutes from './api/agents.js'
 import adminRoutes from './api/admin.js'
 import { startWorker, stopWorker } from './ai/queue.js'
+import { initSocket } from './ws/socket.js'
+
+const __dirname = dirname(fileURLToPath(import.meta.url))
 
 export async function buildApp(opts = {}) {
   const app = Fastify({
@@ -20,6 +26,10 @@ export async function buildApp(opts = {}) {
   // ─── Plugins ───
   await app.register(cors, { origin: config.allowedOrigins })
   await registerRateLimit(app)
+  await app.register(fastifyStatic, {
+    root: join(__dirname, '..', 'public'),
+    prefix: '/',
+  })
 
   // ─── Routes ───
   await app.register(authRoutes)
@@ -28,6 +38,14 @@ export async function buildApp(opts = {}) {
   await app.register(agentApiRoutes)
   await app.register(agentRoutes)
   await app.register(adminRoutes)
+
+  // ─── SPA fallback ───
+  app.setNotFoundHandler((request, reply) => {
+    if (request.method === 'GET' && !request.url.startsWith('/api/')) {
+      return reply.sendFile('index.html')
+    }
+    reply.code(404).send({ error: 'NOT_FOUND', message: '资源不存在' })
+  })
 
   // ─── Global error handler ───
   app.setErrorHandler((error, request, reply) => {
@@ -65,6 +83,9 @@ export async function startServer() {
   process.on('SIGTERM', shutdown)
 
   await app.listen({ port: config.port, host: config.host })
+
+  // Init socket.io on the underlying HTTP server
+  initSocket(app.server)
 
   // Start AI job queue worker after server is listening
   startWorker()

@@ -12,7 +12,20 @@ export async function callWebhook(job) {
     comment_id: job.comment_id ?? null,
     trigger_text: job.trigger_text,
     author: { id: job.triggered_by, username: job.triggered_by_username },
-    board: { id: job.board_id },
+    post: {
+      id: job.post_id,
+      title: job.post_title,
+      content: job.post_content,
+      author: { id: job.post_author_id, username: job.post_author_username },
+    },
+    board: { id: job.board_id, name: job.board_name },
+    thread: (job.thread || []).map(c => ({
+      id: c.id,
+      parent_id: c.parent_id,
+      content: c.is_deleted ? '[此内容已删除]' : c.content,
+      author: { id: c.author_id, username: c.author_username },
+      agent_name: c.agent_name ?? null,
+    })),
     reply_to: {
       type: job.comment_id ? 'comment' : 'post',
       id: job.comment_id ?? job.post_id,
