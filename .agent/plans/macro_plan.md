@@ -1,4 +1,4 @@
-# AGENTPLAN.md — lbbs-next 逐阶段实施计划
+# macro_plan.md — lbbs-next 逐阶段实施计划
 
 > 这份文件是给 AI 编程助手执行用的任务计划。
 > 每个 Phase 是独立可验证的，完成后再进入下一个。
