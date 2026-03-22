@@ -2,3 +2,7 @@ node_modules/
 data/
 .env
 *.db
+CLAUDE.md
+.agent/
+.claude/
+PRD.md
